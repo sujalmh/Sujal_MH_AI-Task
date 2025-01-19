@@ -32,8 +32,9 @@ def upload_folder():
     global progress
     """API to upload a folder of resumes."""
     job_description = request.form.get('jobDescription', None)
+    use_github = request.form.get('useGitHub', None)
     uploaded_files = request.files.getlist('files')
-    print(job_description)
+    print(use_github)
     if not uploaded_files:
         return jsonify({'error': 'No files uploaded'}), 400
 
@@ -48,7 +49,7 @@ def upload_folder():
             return jsonify({'error': f'Error saving file {file.filename}: {str(e)}'}), 500
 
     
-    executor.submit(process_resumes_in_folder, job_description, UPLOAD_FOLDER, session_id)
+    executor.submit(process_resumes_in_folder, job_description, use_github, UPLOAD_FOLDER, session_id)
     with progress_lock:
         progress["uploadingCompleted"] = True
     return jsonify({'message': 'Files uploaded and processing started', 'session_id': session_id}), 200
@@ -136,7 +137,33 @@ def get_results():
     finally:
         conn.close()
 
-def process_resumes_in_folder(job_description, folder_path, session_id):
+@app.route('/history', methods=['GET'])
+def get_history():
+    
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    cursor = conn.cursor()
+
+    
+    cursor.execute("SELECT DISTINCT session_id FROM processed_resumes ORDER BY session_id")
+    
+    
+    session_ids = cursor.fetchall()
+
+    session_list = []
+
+    for session in session_ids:
+        
+        session_id = session[0]
+        cursor.execute("SELECT created_at FROM processed_resumes WHERE session_id = ? ORDER BY created_at LIMIT 1", (session_id,))
+        created_at = cursor.fetchone()[0]
+
+        session_list.append({"session_id": session_id, "created_at": created_at})
+
+    conn.close()
+
+    return jsonify(session_list)
+
+def process_resumes_in_folder(job_description, use_github, folder_path, session_id):
     """Process all resumes in the uploaded folder with a session ID."""
     global progress
     resumes = [f for f in os.listdir(folder_path) if f.endswith(".pdf")]
@@ -145,7 +172,7 @@ def process_resumes_in_folder(job_description, folder_path, session_id):
 
     for resume_file in resumes:
         file_path = os.path.join(folder_path, resume_file)
-        executor.submit(pipeline, job_description=job_description, file_name=resume_file, pdf_path=file_path, session_id=session_id)
+        executor.submit(pipeline, job_description=job_description, use_github=use_github, file_name=resume_file, pdf_path=file_path, session_id=session_id)
 
     while progress["completed"] < len(resumes):
         pass  
@@ -157,12 +184,12 @@ def process_resumes_in_folder(job_description, folder_path, session_id):
     cleanup_uploaded_files(folder_path)
 
 
-def pipeline(job_description, file_name, pdf_path, session_id):   
+def pipeline(job_description, use_github, file_name, pdf_path, session_id):   
     text = extract_text_from_pdf(pdf_path)
     if not text:
         return
 
-    parsed_data = extract_and_score_resume(text)
+    parsed_data = extract_and_score_resume(use_github, text)
     data = parsed_data.model_dump(by_alias=True)
     
     insert_data_into_db(job_description, file_name, data, session_id)
@@ -219,6 +246,7 @@ def init_db():
     CREATE TABLE IF NOT EXISTS processed_resumes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         session_id TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         file_name TEXT,
         name TEXT,
         contact_details TEXT,

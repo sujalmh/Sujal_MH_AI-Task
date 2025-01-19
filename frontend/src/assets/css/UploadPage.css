@@ -17,9 +17,16 @@
     margin-bottom: 20px;
 }
 
-.upload-section, .status-section, .progress-section, .download-section, .reset-section {
+.upload-section, .status-section, .progress-section {
     width: 100%;
     margin: 15px 0;
+    display: flex;
+    justify-content: center;
+}
+
+.download-section, .results-section, .reset-section {
+    width: 100%;
+    margin: 5px 0;
     display: flex;
     justify-content: center;
 }
@@ -89,7 +96,6 @@
     display: flex;
     align-items: center;
     justify-content: center; 
-    gap: 8px;
     background-color: #2196F3;
     color: white;
 }
@@ -99,17 +105,27 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
     color: white;
+    width: 15%;
 }
+
+.results-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center; 
+    background-color: #ADD8E6;
+    color: white;
+    width: 15%;
+}
+
 
 .reset-btn {
     display: flex;
     align-items: center;
     justify-content: center; 
-    gap: 8px;
     background-color: #9e9e9e;
     color: white;
+    width: 15%;
 }
 
 .btn:hover {
@@ -159,6 +175,9 @@
     font-size: 20px;
 }
 #startOverBtn {
+    font-size: 15px;
+}
+#ResultsBtn {
     font-size: 15px;
 }
 

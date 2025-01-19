@@ -3,9 +3,11 @@ import axios from 'axios';
 import '../assets/css/UploadPage.css';
 import { Link } from "react-router-dom";
 import { MdPending, MdCheckCircle, MdDownload, MdOutlineReplay, MdArrowForward, MdCloudUpload  } from "react-icons/md";
+import { GrScorecard } from "react-icons/gr";
 
 function UploadComponent() {
     const [jobDescriptionNeeded, setJobDescriptionNeeded] = useState(false);
+    const [useGitHub, setUseGitHub] = useState(false);
     const [files, setFiles] = useState([]);
     const [progress, setProgress] = useState({
         status: 'idle',
@@ -15,24 +17,25 @@ function UploadComponent() {
         processingCompleted: false,
     });
     const [message, setMessage] = useState('');
-    const [folderConfirmed, setFolderConfirmed] = useState(false);  // Track folder confirmation
-    const [processingComplete, setProcessingComplete] = useState(false);  // Track if processing is complete
-    const [sessionId, setSessionId] = useState(null);  // Track session id
-    const [uploading, setUploading] = useState(false);  // Track if uploading is in progress
+    const [folderConfirmed, setFolderConfirmed] = useState(false);
+    const [processingComplete, setProcessingComplete] = useState(false);
+    const [sessionId, setSessionId] = useState(null);
+    const [uploading, setUploading] = useState(false);
     const [jobDescription, setJobDescription] = useState('');
 
     const handleFolderSelection = (event) => {
         const selectedFiles = event.target.files;
         if (selectedFiles.length > 0) {
             setFiles(selectedFiles);
-            setFolderConfirmed(false);  // Reset the folder confirmation state
+            setFolderConfirmed(false);
             setMessage('Files selected. Confirm folder to upload.');
         }
     };
 
     const handleConfirmFolder = () => {
         
-        if (files.length === 0 || jobDescription === "") {
+        if (files.length === 0 || (jobDescriptionNeeded && jobDescription === "")) {
+            console.log(files.length, jobDescription);
             if (files.length === 0) {
                 setMessage('Please select a folder.');
             }
@@ -52,7 +55,7 @@ function UploadComponent() {
         }
 
         setProgress({ ...progress, status: 'uploading', completed: 0, total: files.length, uploadingCompleted: false, processingCompleted: false });
-        setUploading(true);  // Mark uploading as in progress
+        setUploading(true);
 
         const formData = new FormData();
         for (let i = 0; i < files.length; i++) {
@@ -61,6 +64,7 @@ function UploadComponent() {
         if (jobDescriptionNeeded) {
             formData.append('jobDescription', jobDescription);
         }
+        formData.append('useGitHub', useGitHub);
         try {
             const response = await axios.post('http://localhost:5000/upload-folder', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
@@ -72,8 +76,8 @@ function UploadComponent() {
                 },
             });
             setMessage(response.data.message);
-            setSessionId(response.data.session_id);  // Store the session ID returned by backend
-            startProgressPolling();  // Start polling the progress after upload
+            setSessionId(response.data.session_id);
+            startProgressPolling();
         } catch (error) {
             setMessage('Error uploading files');
         }
@@ -87,9 +91,9 @@ function UploadComponent() {
                 });
                 setProgress(response.data);
                 if (response.data.status === 'completed') {
-                    setProcessingComplete(true); // Mark processing as complete
-                    setUploading(false);  // Mark upload as finished
-                    clearInterval(interval);  // Stop polling once processing is complete
+                    setProcessingComplete(true);
+                    setUploading(false);
+                    clearInterval(interval);
                 }
             } catch (error) {
                 console.error('Error fetching progress', error);
@@ -130,6 +134,8 @@ function UploadComponent() {
         setUploading(false);
         setSessionId(null);
         setJobDescription('');
+        setJobDescriptionNeeded(false);
+        setUseGitHub(false);
         const fileInput = document.getElementById('folderInput');
             if (fileInput) {
                 fileInput.value = null;
@@ -160,8 +166,18 @@ function UploadComponent() {
                     type="checkbox"
                     checked={jobDescriptionNeeded}
                     onChange={(e) => setJobDescriptionNeeded(e.target.checked)}
+                    id='jobDescriptionNeededInput'
                     />
                     Is job description needed?
+                </label>
+                <label>
+                    <input
+                    type="checkbox"
+                    checked={useGitHub}
+                    onChange={(e) => setUseGitHub(e.target.checked)}
+                    id='useGitHubInput'
+                    />
+                    Analyse GitHub? (takes more time)
                 </label>
 
                 {jobDescriptionNeeded && (
@@ -194,8 +210,6 @@ function UploadComponent() {
                 {message && <p className="status-message">{message}</p>}
             </div>
 
-            {/* Status */}
-           
             {files.length > 0 && (
                 <table className="status-section">
                     <tbody>
@@ -215,7 +229,6 @@ function UploadComponent() {
                 </table>
             )}
 
-            {/* Progress bar */}
             {progress.status !== 'idle' && !processingComplete && (
                 <div className="progress-section">
                     <p>Status: {progress.status}</p>
@@ -229,7 +242,6 @@ function UploadComponent() {
                 </div>
             )}
 
-            {/* Download button */}
             {processingComplete && (
                 <div className="download-section">
                     <p>Processing complete. Download the results.</p>
@@ -239,13 +251,13 @@ function UploadComponent() {
                 </div>
             )}
             {processingComplete && (
-                <div className="reset-section">
-                    <button className="btn reset-btn">
-                        <Link to={`/score/{sessionId}`}><MdOutlineReplay id='startOverBtn'/>View Results</Link>
+                <div className="results-section">
+                    <button className="btn results-btn">
+                        <Link to={`/score/${sessionId}`}><GrScorecard id='ResultsBtn'/> View Results</Link>
                     </button>
                 </div>
             )}
-            {/* Reset button */}
+
             {processingComplete && (
                 <div className="reset-section">
                     <button onClick={resetProcess} className="btn reset-btn">

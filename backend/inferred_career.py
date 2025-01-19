@@ -2,7 +2,6 @@ import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from PyPDF2 import PdfReader
-from openai import OpenAI
 
 class ResumeMatcher:
     def __init__(self, dataset_path):
@@ -42,46 +41,6 @@ def extract_text_from_pdf(pdf_path):
     except Exception as e:
         print(f"Error extracting text from {pdf_path}: {e}")
         return ""
-
-import pandas as pd
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-
-
-class RoleMatcher:
-    def __init__(self):
-        """
-        Initialize the RoleMatcher class with a TF-IDF vectorizer.
-        """
-        self.vectorizer = TfidfVectorizer(stop_words='english')
-
-    def score_resumes(self, job_description, resumes):
-        """
-        Compute match scores of uploaded resumes for a given job description.
-        :param job_description: The input job description (string).
-        :param resumes: A list of uploaded resumes (list of strings).
-        :return: List of resumes with their match scores.
-        """
-        if not resumes:
-            raise ValueError("No resumes provided for scoring.")
-
-        
-        all_documents = resumes + [job_description]
-
-        
-        vectors = self.vectorizer.fit_transform(all_documents)
-
-        
-        job_vector = vectors[-1]
-        similarity_scores = cosine_similarity(job_vector, vectors[:-1]).flatten()
-
-        
-        scored_resumes = pd.DataFrame({
-            'Resume': resumes,
-            'Match Score': similarity_scores
-        }).sort_values(by='Match Score', ascending=False)
-
-        return scored_resumes.head(10).to_dict(orient="records")
 
 def inferred_career(resume_text):
     matcher = ResumeMatcher('UpdatedResumeDataSet.csv')

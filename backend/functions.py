@@ -10,10 +10,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import re
+import requests
+import base64
 
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
 class ResumeData(BaseModel):
     name: Optional[str] = Field(None, alias="Name")
@@ -90,20 +92,28 @@ def extract_text_from_pdf(pdf_path):
         return ""
 
 
-def extract_and_score_resume(text):
+def extract_and_score_resume(use_github, text):
     """Call OpenAI API to extract data and score the resume."""
     try:
+        github_projects = ""
         client = OpenAI(api_key=OPENAI_API_KEY)
+        if use_github:
+            github_projects = get_git_readme(text)
+            if not github_projects:
+                use_github = False
+        if github_projects:
+            if len(github_projects) > 0:
+                text += "\n" + github_projects
         response = client.beta.chat.completions.parse(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": """You are an assistant designed to extract data and score resumes. Fields: Name, Contact Details, University, Expected Year of Current Course Completion, Course, Discipline, CGPA, Key Skills, Projects, Internships, Certifications.
+                {"role": "system", "content": """You are an assistant designed to extract data and score resumes. Fields: Name, Contact Details, University, Expected Year of Current Course Completion, Course, Discipline, CGPA, Key Skills, Projects with Short Description, Internships, Certifications.
                     Scores: Assign scores for AI/ML Experience (1-3) and Generative AI Experience (1-3). Score can have values 1-3, where 1 – Exposed, 2 – Handson and 3- worked on advanced areas such as Agentic RAG, Evals etc. Similarly for AI/ML experience score as well.
-                 Also get skills from completed projects, internships, and certifications. """},
+                 Also get skills from completed projects, internships, and certifications. 
+                 Add short description to each of the projects."""},
                 {
                     "role": "user",
                     "content": f"""Extract the following fields and score the resume:
-                    
                     Resume Content:\n{text}"""
                 },
             ],
@@ -181,34 +191,36 @@ def export_processed_data_to_csv(db_file, output_file):
 
 
 def role_match(job_description, skills, projects, internships, courses):
-    client = OpenAI(api_key=OPENAI_API_KEY)
+    try:
+        client = OpenAI(api_key=OPENAI_API_KEY)
 
-    model = 'ft:gpt-4o-mini-2024-07-18:personal:role-match:ArBD43Jl'
+        model = 'ft:gpt-4o-mini-2024-07-18:personal:role-match:ArBD43Jl'
 
-    resume = ""
-    if skills:
-        resume += f"Skills: {skills}. "
-    if projects:
-        resume += f"\nProjects: {projects}. "
-    if internships:
-        resume += f"\nInternships: {internships}. "
-    if courses:
-        resume += f"\nCourses: {courses}"
+        resume = ""
+        if skills:
+            resume += f"Skills: {skills}. "
+        if projects:
+            resume += f"\nProjects: {projects}. "
+        if internships:
+            resume += f"\nInternships: {internships}. "
+        if courses:
+            resume += f"\nCourses: {courses}"
 
-    prompt = f"Job Description: {job_description}\nResume: {resume}"
+        prompt = f"Job Description: {job_description}\nResume: {resume}"
 
-    completion = client.chat.completions.create(
-        model=model,
-        messages=[  
-            {"role": "system", "content": "You are an assistant that evaluates job description and resume matches."},
-            {"role": "user", "content": f"{prompt}"}
-        ],
-        max_tokens=50,  
-        temperature=0.4  
-    )
-
-
-    return int(completion.choices[0].message.content.split()[-1])
+        completion = client.chat.completions.create(
+            model=model,
+            messages=[  
+                {"role": "system", "content": "You are an assistant that evaluates job description and resume matches."},
+                {"role": "user", "content": f"{prompt}"}
+            ],
+            max_tokens=50,  
+            temperature=0.4  
+        )
+        return int(completion.choices[0].message.content.split()[-1])
+    except Exception as e:
+        print(f"Error matching roles: {e}")
+        return 0
 
 class ResumeMatcher:
     def __init__(self, dataset_path):
@@ -240,3 +252,61 @@ def inferred_career(skills, projects, internships, courses):
         cat.add(item['Category'])
     ret = ', '.join(list(cat))
     return ret
+
+def get_git_readme(text, token = GITHUB_TOKEN):
+    try:
+        match = re.search(r'github\.com/\s*([a-zA-Z0-9_-]+)', text)
+        username = match.group(1) if match else None
+        print("Username:",username)
+        projects = []
+        if not username:
+            return None
+        url = f"https://api.github.com/users/{username}/repos"
+        headers = {"Authorization": f"Bearer {token}"}
+        params = {
+            "type": "public",  
+            "per_page": 10,    
+            "page": 1          
+        }
+
+        response = requests.get(url, headers=headers, params=params)
+        if response.status_code == 200:
+            repos = response.json()
+            for repo in repos:
+                url = f"https://api.github.com/repos/{repo["full_name"]}/readme"
+                response = requests.get(url, headers=headers)
+                if response.status_code == 200:
+                    readme = response.json()
+                    content = base64.b64decode(readme["content"]).decode("utf-8")
+                    content = text.split()
+                    content = ' '.join(content[:50])
+                    projects.append(f"{repo["name"]}: {content}")
+                else:
+                    return None
+
+        else:
+            return None
+        print(len(projects))
+        return summarize_projects(projects)
+    except Exception as e:
+        print(f"Error fetching GitHub projects: {e}")
+        return None
+
+def summarize_projects(projects):
+    try:
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        completion = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are an assistant that summarizes projects in one sentence."},
+                {"role": "user", "content": f"Projects: {'\n'.join(projects)}"}
+            ],
+            max_tokens=2000,
+            temperature=0.4
+        )
+        data = completion.choices[0].message.content
+        print("summarized")
+        return data
+    except Exception as e:
+        print(f"Error summarizing projects: {e}")
+        return ""

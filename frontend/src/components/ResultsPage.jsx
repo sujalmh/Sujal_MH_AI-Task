@@ -59,7 +59,8 @@ const ResultsPage = () => {
     };
   
     return (
-      <div style={{ padding: "20px", fontFamily: "Arial, sans-serif" }}>
+      <div style={{ padding: "20px", fontFamily: "Arial, sans-serif", fontSize: "12px"}}>
+                <button onClick={() => window.location.href = '/'}>Go back</button>
         <h2>Job Matching Results</h2>
         {loading ? (
           <p>Loading results...</p>
